@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Android的消息机制 | 甜树果子二号</title>
+<meta name="keywords" content="">
+<meta name="description" content="概述 Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到Handler所在线程中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。
+Android中的消息机制主要是指Handler的运行机制。Handler创建时会采用当前线程的Looper来构建内部消息循环系统，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。
+分析 ThreadLocal的作用 使用场景 定义：ThreadLocal是一个线程内部的数据存储类，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。
+使用场景：（1）当某些数据是以线程为作用域并且不同线程具有不同的数据副本时就可以采用ThreadLocal。（2）复杂逻辑下的对象传递，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。
+典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。让某个需要用到的对象在线程间隔离。 典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。在任何方法中都可以轻松获取到该对象。 好处： 达到线程安全 不需加锁，提高执行效率 更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个） 免去传参的繁琐：使代码耦合度更低、更优雅。 原理 工作过程：不同的线程访问同一个ThreadLocal的get方法，ThreadLocal内部会从各自的线程中取出一个ThreadLocalMap，然后再从ThreadLocalMap中以当前ThreadLocal作为key去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。
+内部实现：
+ThreadLocal是一个泛型类public class ThreadLocal
+initialValue()
+该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread.">
+<meta name="author" content="">
+<link rel="canonical" href="http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.bccfefac377bc340f06c260aed1bddf49a4354816d7c570d6aac75a997986c95.css" integrity="sha256-vM/vrDd7w0DwbCYK7Rvd9JpDVIFtfFcNaqx1qZeYbJU=" rel="preload stylesheet" as="style">
+<script defer crossorigin="anonymous" src="/assets/js/highlight.f413e19d0714851f6474e7ee9632408e58ac146fbdbe62747134bea2fa3415e0.js" integrity="sha256-9BPhnQcUhR9kdOfuljJAjlisFG&#43;9vmJ0cTS&#43;ovo0FeA="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<link rel="icon" href="http://example.org/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="http://example.org/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="http://example.org/favicon-32x32.png">
+<link rel="apple-touch-icon" href="http://example.org/apple-touch-icon.png">
+<link rel="mask-icon" href="http://example.org/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: rgb(29, 30, 32);
+                --entry: rgb(46, 46, 51);
+                --primary: rgb(218, 218, 219);
+                --secondary: rgb(155, 156, 157);
+                --tertiary: rgb(65, 66, 68);
+                --content: rgb(196, 196, 197);
+                --hljs-bg: rgb(46, 46, 51);
+                --code-bg: rgb(55, 56, 62);
+                --border: rgb(51, 51, 51);
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-track {
+                background: 0 0;
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-thumb {
+                border-color: var(--theme);
+            }
+        }
+
+    </style>
+</noscript><meta property="og:title" content="Android的消息机制" />
+<meta property="og:description" content="概述 Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到Handler所在线程中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。
+Android中的消息机制主要是指Handler的运行机制。Handler创建时会采用当前线程的Looper来构建内部消息循环系统，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。
+分析 ThreadLocal的作用 使用场景 定义：ThreadLocal是一个线程内部的数据存储类，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。
+使用场景：（1）当某些数据是以线程为作用域并且不同线程具有不同的数据副本时就可以采用ThreadLocal。（2）复杂逻辑下的对象传递，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。
+典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。让某个需要用到的对象在线程间隔离。 典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。在任何方法中都可以轻松获取到该对象。 好处： 达到线程安全 不需加锁，提高执行效率 更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个） 免去传参的繁琐：使代码耦合度更低、更优雅。 原理 工作过程：不同的线程访问同一个ThreadLocal的get方法，ThreadLocal内部会从各自的线程中取出一个ThreadLocalMap，然后再从ThreadLocalMap中以当前ThreadLocal作为key去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。
+内部实现：
+ThreadLocal是一个泛型类public class ThreadLocal
+initialValue()
+该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" /><meta property="article:section" content="post" />
+
+
+
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Android的消息机制"/>
+<meta name="twitter:description" content="概述 Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到Handler所在线程中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。
+Android中的消息机制主要是指Handler的运行机制。Handler创建时会采用当前线程的Looper来构建内部消息循环系统，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。
+分析 ThreadLocal的作用 使用场景 定义：ThreadLocal是一个线程内部的数据存储类，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。
+使用场景：（1）当某些数据是以线程为作用域并且不同线程具有不同的数据副本时就可以采用ThreadLocal。（2）复杂逻辑下的对象传递，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。
+典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。让某个需要用到的对象在线程间隔离。 典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。在任何方法中都可以轻松获取到该对象。 好处： 达到线程安全 不需加锁，提高执行效率 更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个） 免去传参的繁琐：使代码耦合度更低、更优雅。 原理 工作过程：不同的线程访问同一个ThreadLocal的get方法，ThreadLocal内部会从各自的线程中取出一个ThreadLocalMap，然后再从ThreadLocalMap中以当前ThreadLocal作为key去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。
+内部实现：
+ThreadLocal是一个泛型类public class ThreadLocal
+initialValue()
+该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread."/>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "http://example.org/post/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "Android的消息机制",
+      "item": "http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Android的消息机制",
+  "name": "Android的消息机制",
+  "description": "概述 Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到Handler所在线程中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。\nAndroid中的消息机制主要是指Handler的运行机制。Handler创建时会采用当前线程的Looper来构建内部消息循环系统，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。\n分析 ThreadLocal的作用 使用场景 定义：ThreadLocal是一个线程内部的数据存储类，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。\n使用场景：（1）当某些数据是以线程为作用域并且不同线程具有不同的数据副本时就可以采用ThreadLocal。（2）复杂逻辑下的对象传递，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。\n典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。让某个需要用到的对象在线程间隔离。 典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。在任何方法中都可以轻松获取到该对象。 好处： 达到线程安全 不需加锁，提高执行效率 更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个） 免去传参的繁琐：使代码耦合度更低、更优雅。 原理 工作过程：不同的线程访问同一个ThreadLocal的get方法，ThreadLocal内部会从各自的线程中取出一个ThreadLocalMap，然后再从ThreadLocalMap中以当前ThreadLocal作为key去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。\n内部实现：\nThreadLocal是一个泛型类public class ThreadLocal\ninitialValue()\n该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread.",
+  "keywords": [
+    
+  ],
+  "articleBody": "概述 Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到Handler所在线程中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。\nAndroid中的消息机制主要是指Handler的运行机制。Handler创建时会采用当前线程的Looper来构建内部消息循环系统，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。\n分析 ThreadLocal的作用 使用场景 定义：ThreadLocal是一个线程内部的数据存储类，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。\n使用场景：（1）当某些数据是以线程为作用域并且不同线程具有不同的数据副本时就可以采用ThreadLocal。（2）复杂逻辑下的对象传递，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。\n典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。让某个需要用到的对象在线程间隔离。 典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。在任何方法中都可以轻松获取到该对象。 好处： 达到线程安全 不需加锁，提高执行效率 更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个） 免去传参的繁琐：使代码耦合度更低、更优雅。 原理 工作过程：不同的线程访问同一个ThreadLocal的get方法，ThreadLocal内部会从各自的线程中取出一个ThreadLocalMap，然后再从ThreadLocalMap中以当前ThreadLocal作为key去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。\n内部实现：\nThreadLocal是一个泛型类public class ThreadLocal\ninitialValue()\n该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread.currentThread(); //进行get操作的时候也就是把当前线程的ThreadLocalMap取出 ThreadLocalMap map = getMap(t); if (map != null) { //将ThreadLocal自己本身作为key去取出内部的实际数据 ThreadLocalMap.Entry e = map.getEntry(this); if (e != null) { @SuppressWarnings(\"unchecked\") T result = (T)e.value; return result; } } return setInitialValue(); } 这个map以及map中的key和value都是保存在线程中的，而不是保存在ThreadLocal中。\nremove 删除对应这个线程的值\n从set/get方法的实现可知，这些变量是维护在Thread类内部的ThreadLocalMap当中，只要线程不退出，对象的引用将一直存在，而当线程退出时，Thread类做的清理工作就包括了清理ThreadLocalMap。\n但如果使用线程池，线程未必会退出，如果将一些大的对象设置到ThreadLocal中，可能会出现内存泄漏，所以如果希望及时回收对象，可以使用**ThreadLocal.remove()**方法将变量移除。当然将ThreadLocal赋为null也可以加速回收，原因与ThreadLocalMap的实现使用了弱引用有关，内部由一系列的Entry构成，static class Entry extends WeakReference",
+  "wordCount" : "1296",
+  "inLanguage": "en",
+  "datePublished": "0001-01-01T00:00:00Z",
+  "dateModified": "0001-01-01T00:00:00Z",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "甜树果子二号",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "http://example.org/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="http://example.org/" accesskey="h" title="甜树果子二号 (Alt + H)">甜树果子二号</a>
+            <div class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <ul id="menu">
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    
+    <h1 class="post-title">
+      Android的消息机制
+    </h1>
+    <div class="post-meta">
+
+</div>
+  </header> 
+  <div class="post-content"><h2 id="概述">概述<a hidden class="anchor" aria-hidden="true" href="#概述">#</a></h2>
+<p>Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到<strong>Handler所在线程</strong>中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。</p>
+<p>Android中的消息机制主要是指Handler的运行机制。<strong>Handler创建时会采用当前线程的Looper来构建内部消息循环系统</strong>，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。</p>
+<h2 id="分析">分析<a hidden class="anchor" aria-hidden="true" href="#分析">#</a></h2>
+<h3 id="threadlocal的作用"><strong>ThreadLocal的作用</strong><a hidden class="anchor" aria-hidden="true" href="#threadlocal的作用">#</a></h3>
+<h4 id="使用场景">使用场景<a hidden class="anchor" aria-hidden="true" href="#使用场景">#</a></h4>
+<p>定义：ThreadLocal是一个<strong>线程内部的数据存储类</strong>，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。</p>
+<p>使用场景：（1）当某些数据是<strong>以线程为作用域并且不同线程具有不同的数据副本</strong>时就可以采用ThreadLocal。（2）<strong>复杂逻辑下的对象传递</strong>，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。</p>
+<ul>
+<li>典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。<strong>让某个需要用到的对象在线程间隔离</strong>。</li>
+<li>典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。<strong>在任何方法中都可以轻松获取到该对象。</strong></li>
+<li>好处：
+<ol>
+<li>达到线程安全</li>
+<li>不需加锁，提高执行效率</li>
+<li>更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个）</li>
+<li>免去传参的繁琐：使代码耦合度更低、更优雅。</li>
+</ol>
+</li>
+</ul>
+<h4 id="原理"><strong>原理</strong><a hidden class="anchor" aria-hidden="true" href="#原理">#</a></h4>
+<p>工作过程：<strong>不同的线程访问同一个ThreadLocal</strong>的get方法，ThreadLocal内部会从<strong>各自的线程中取出一个ThreadLocalMap</strong>，然后再从ThreadLocalMap中以<strong>当前ThreadLocal作为key</strong>去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。</p>
+<p>内部实现：</p>
+<ul>
+<li>
+<p>ThreadLocal是一个泛型类public class ThreadLocal<!-- raw HTML omitted --></p>
+</li>
+<li>
+<p>initialValue()</p>
+<ul>
+<li>该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。</li>
+<li>通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。</li>
+<li>如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。</li>
+</ul>
+</li>
+<li>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-java" data-lang="java"><span style="display:flex;"><span><span style="color:#66d9ef">public</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">set</span><span style="color:#f92672">(</span>T value<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>        Thread t <span style="color:#f92672">=</span> Thread<span style="color:#f92672">.</span><span style="color:#a6e22e">currentThread</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>    	<span style="color:#75715e">//取出当前线程的ThreadLocalMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    	<span style="color:#75715e">//ThreadLocalMap不是Map，但是可以理解为Map
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        ThreadLocalMap map <span style="color:#f92672">=</span> getMap<span style="color:#f92672">(</span>t<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>map <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>            map<span style="color:#f92672">.</span><span style="color:#a6e22e">set</span><span style="color:#f92672">(</span><span style="color:#66d9ef">this</span><span style="color:#f92672">,</span> value<span style="color:#f92672">);</span><span style="color:#75715e">//key是ThreadLocal当前变量，value是我们需要的值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>            createMap<span style="color:#f92672">(</span>t<span style="color:#f92672">,</span> value<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>ThreadLocalMap <span style="color:#a6e22e">getMap</span><span style="color:#f92672">(</span>Thread t<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> t<span style="color:#f92672">.</span><span style="color:#a6e22e">threadLocals</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">//Thread内定义了成员threadLocals
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>ThreadLocal<span style="color:#f92672">.</span><span style="color:#a6e22e">ThreadLocalMap</span> threadLocals <span style="color:#f92672">=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">//threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。
+</span></span></span></code></pre></div></li>
+<li>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-java" data-lang="java"><span style="display:flex;"><span><span style="color:#66d9ef">public</span> T <span style="color:#a6e22e">get</span><span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>          Thread t <span style="color:#f92672">=</span> Thread<span style="color:#f92672">.</span><span style="color:#a6e22e">currentThread</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#75715e">//进行get操作的时候也就是把当前线程的ThreadLocalMap取出
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>          ThreadLocalMap map <span style="color:#f92672">=</span> getMap<span style="color:#f92672">(</span>t<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>map <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>              <span style="color:#75715e">//将ThreadLocal自己本身作为key去取出内部的实际数据
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>              ThreadLocalMap<span style="color:#f92672">.</span><span style="color:#a6e22e">Entry</span> e <span style="color:#f92672">=</span> map<span style="color:#f92672">.</span><span style="color:#a6e22e">getEntry</span><span style="color:#f92672">(</span><span style="color:#66d9ef">this</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>              <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>e <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                  <span style="color:#a6e22e">@SuppressWarnings</span><span style="color:#f92672">(</span><span style="color:#e6db74">&#34;unchecked&#34;</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>                  T result <span style="color:#f92672">=</span> <span style="color:#f92672">(</span>T<span style="color:#f92672">)</span>e<span style="color:#f92672">.</span><span style="color:#a6e22e">value</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                  <span style="color:#66d9ef">return</span> result<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>              <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#66d9ef">return</span> setInitialValue<span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">}</span>
+</span></span></code></pre></div><p>这个map以及map中的key和value都是保存在线程中的，而不是保存在ThreadLocal中。</p>
+</li>
+<li>
+<p>remove 删除对应这个线程的值</p>
+</li>
+<li>
+<p>从set/get方法的实现可知，这些变量是维护在Thread类内部的ThreadLocalMap当中，只要<strong>线程不退出，对象的引用将一直存在</strong>，而当线程退出时，Thread类做的清理工作就包括了清理ThreadLocalMap。</p>
+<p>但如果使用线程池，线程未必会退出，如果将一些大的对象设置到ThreadLocal中，可能会出现<strong>内存泄漏</strong>，所以如果希望及时回收对象，可以使用**ThreadLocal.remove()**方法将变量移除。当然将ThreadLocal赋为null也可以加速回收，原因与<a href="https://developer.aliyun.com/article/689656"><strong>ThreadLocalMap的实现使用了弱引用</strong>有关</a>，内部由一系列的Entry构成，static class Entry extends WeakReference&lt;ThreadLocal<!-- raw HTML omitted -->&gt;。</p>
+</li>
+<li>
+<p>ThreadLocalMap是Thread类中的变量，其中最重要的是一个键值对数组Entry[] table，可以认为是一个map（使用线性探测法处理哈希冲突），键值对：</p>
+<ul>
+<li>键：这个ThreadLocal</li>
+<li>值：实际需要的成员变量</li>
+</ul>
+</li>
+</ul>
+<h4 id="threadlocal注意点">ThreadLocal注意点<a hidden class="anchor" aria-hidden="true" href="#threadlocal注意点">#</a></h4>
+<ul>
+<li>
+<p>内存泄露（某个对象不再有用，但是占用的内存却不能被回收）==对下面这堆解释目前不理解不赞同==</p>
+<ul>
+<li>key是弱引用，弱引用不会阻止GC</li>
+<li>value是强引用</li>
+</ul>
+<blockquote>
+<p>正常情况下，当线程终止，保存在ThreadLocal中的value会被垃圾回收，因为没有任何强引用了。但是如果线程不终止，key对应的value就不能被回收，因为存在调用链：Thread——ThreadLocalMap——Entry（key为null）——value。也即value无法回收，就可能会出现OOM。</p>
+<p>JDK已经考虑到这个问题，所以在set、remove、rehash方法中会扫描key为null的Entry，并将对应的value设置为null，这样value对象就可以被回收。</p>
+<p>但是如果一个ThreadLocal不被使用，那么实际上set、remove、rehash方法也不会被调用，如果同时线程又不停止，那么调用链就一直存在，就会导致value的内存泄露。</p>
+<p>避免内存泄露（阿里规约）：调用remove方法，就会删除对应的Entry对象，可以避免内存泄露，所以使用完ThreadLocal之后，应该调用remove方法。</p>
+</blockquote>
+</li>
+<li>
+<p>空指针异常问题</p>
+<p>在没有初始化的情况下get只会返回null。如果出现空指针异常可能是代码原因（比如使用获取的null值进行拆箱操作等）。</p>
+</li>
+<li>
+<p>共享对象</p>
+<p>如果在每个线程中ThreadLocal.set进去的东西本来就是多线程共享的同一个对象，比如static对象，那么多个线程的ThreadLocal.get()取得的还是这个共享对象本身，还是有并发访问问题。</p>
+</li>
+<li>
+<p>如果不使用ThreadLocal就可以解决问题，不需要强行使用</p>
+<p>例如任务数很少的时候，在局部变量中新建对象就可以解决问题，就不需要使用到ThreadLocal。</p>
+</li>
+<li>
+<p>优先使用框架支持，而不是自己创造</p>
+<p>例如在Spring中，如果可以使用RequestContextHolder，就不需要自己去维护一个ThreadLocal，以免因为忘记调用remove方法等，造成内存泄露。</p>
+</li>
+</ul>
+<h3 id="message"><strong>Message</strong><a hidden class="anchor" aria-hidden="true" href="#message">#</a></h3>
+<ul>
+<li>
+<p>消息对象</p>
+<p>Message包括了 int what（消息类别）、long when（消息触发时间）、int arg1、int arg2（参数2）、Object obj（消息内容）、Handler target（消息响应方）、Runable callback（回调方法）。</p>
+</li>
+<li>
+<p>消息池</p>
+<p>静态变量<code>sPool</code>的数据类型为Message，通过next成员变量，维护一个消息池；静态变量<code>MAX_POOL_SIZE</code>代表消息池的可用大小；消息池的默认大小为50。</p>
+<p><strong>Message.obtain()</strong>，从消息池取Message，都是把消息池表头的Message取走，再把表头指向next。</p>
+<p><strong>Message#recycle()</strong>，将Message加入到消息池的过程，都是把Message加到链表的表头。</p>
+</li>
+</ul>
+<h3 id="消息队列的工作原理"><strong>消息队列的工作原理</strong><a hidden class="anchor" aria-hidden="true" href="#消息队列的工作原理">#</a></h3>
+<ul>
+<li>
+<p>MessageQueue通过<strong>单链表</strong>数据结构来维护消息列表；</p>
+</li>
+<li>
+<p>boolean enqueueMessage(Message msg, long when) <strong>插入消息</strong>，也就是单链表的插入；</p>
+</li>
+<li>
+<p>Message next() <strong>取出一条消息并从消息队列中删除</strong>，next是一个<strong>无限循环</strong>的方法，如果消息队列中没有消息就会<strong>阻塞</strong>在这里，而有消息到来就会返回这条消息并从单链表中删除。</p>
+</li>
+<li>
+<p>源码梳理（==暂未求证==）</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-java" data-lang="java"><span style="display:flex;"><span><span style="color:#75715e">//MessageQueue.java
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">public</span> <span style="color:#66d9ef">final</span> <span style="color:#66d9ef">class</span> <span style="color:#a6e22e">MessageQueue</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//...
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">boolean</span> <span style="color:#a6e22e">enqueueMessage</span><span style="color:#f92672">(</span>Message msg<span style="color:#f92672">,</span> <span style="color:#66d9ef">long</span> when<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>msg<span style="color:#f92672">.</span><span style="color:#a6e22e">target</span> <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">throw</span> <span style="color:#66d9ef">new</span> IllegalArgumentException<span style="color:#f92672">(</span><span style="color:#e6db74">&#34;Message must have a target.&#34;</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">synchronized</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">this</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>msg<span style="color:#f92672">.</span><span style="color:#a6e22e">isInUse</span><span style="color:#f92672">())</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">throw</span> <span style="color:#66d9ef">new</span> IllegalStateException<span style="color:#f92672">(</span>msg <span style="color:#f92672">+</span> <span style="color:#e6db74">&#34; This message is already in use.&#34;</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>mQuitting<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                IllegalStateException e <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> IllegalStateException<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>                        msg<span style="color:#f92672">.</span><span style="color:#a6e22e">target</span> <span style="color:#f92672">+</span> <span style="color:#e6db74">&#34; sending message to a Handler on a dead thread&#34;</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>                Log<span style="color:#f92672">.</span><span style="color:#a6e22e">w</span><span style="color:#f92672">(</span>TAG<span style="color:#f92672">,</span> e<span style="color:#f92672">.</span><span style="color:#a6e22e">getMessage</span><span style="color:#f92672">(),</span> e<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>                msg<span style="color:#f92672">.</span><span style="color:#a6e22e">recycle</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">false</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            msg<span style="color:#f92672">.</span><span style="color:#a6e22e">markInUse</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>            msg<span style="color:#f92672">.</span><span style="color:#a6e22e">when</span> <span style="color:#f92672">=</span> when<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 队头
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            Message p <span style="color:#f92672">=</span> mMessages<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">boolean</span> needWake<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>p <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span> <span style="color:#f92672">||</span> when <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">||</span> when <span style="color:#f92672">&lt;</span> p<span style="color:#f92672">.</span><span style="color:#a6e22e">when</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 将消息放入队头位置
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// New head, wake up the event queue if blocked.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                msg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span> <span style="color:#f92672">=</span> p<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                mMessages <span style="color:#f92672">=</span> msg<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                needWake <span style="color:#f92672">=</span> mBlocked<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span> <span style="color:#66d9ef">else</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 将新消息插入到队列中，同步消息根据when来确定队列位置，
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">//如果是同步屏障，同步屏障消息target==null，且新消息是异步的，则needWake为true，则计划唤醒队列。
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// Inserted within the middle of the queue.  Usually we don&#39;t have to wake
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// up the event queue unless there is a barrier at the head of the queue
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// and the message is the earliest asynchronous message in the queue.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                needWake <span style="color:#f92672">=</span> mBlocked <span style="color:#f92672">&amp;&amp;</span> p<span style="color:#f92672">.</span><span style="color:#a6e22e">target</span> <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span> <span style="color:#f92672">&amp;&amp;</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">isAsynchronous</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>                Message prev<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span> <span style="color:#f92672">(;;)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    prev <span style="color:#f92672">=</span> p<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    p <span style="color:#f92672">=</span> p<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>p <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span> <span style="color:#f92672">||</span> when <span style="color:#f92672">&lt;</span> p<span style="color:#f92672">.</span><span style="color:#a6e22e">when</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#66d9ef">break</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 如果队头的一下个消息也是异步消息，且未到唤醒时间，
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#75715e">//则将needWake置为false，不唤醒队列
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>needWake <span style="color:#f92672">&amp;&amp;</span> p<span style="color:#f92672">.</span><span style="color:#a6e22e">isAsynchronous</span><span style="color:#f92672">())</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                        needWake <span style="color:#f92672">=</span> <span style="color:#66d9ef">false</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                msg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span> <span style="color:#f92672">=</span> p<span style="color:#f92672">;</span> <span style="color:#75715e">// invariant: p == prev.next
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                prev<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span> <span style="color:#f92672">=</span> msg<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// We can assume mPtr != 0 because mQuitting is false.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>needWake<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                nativeWake<span style="color:#f92672">(</span>mPtr<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">true</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">@UnsupportedAppUsage</span>
+</span></span><span style="display:flex;"><span>    Message <span style="color:#a6e22e">next</span><span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// Return here if the message loop has already quit and been disposed.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#75715e">// This can happen if the application tries to restart a looper after quit
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#75715e">// which is not supported.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">final</span> <span style="color:#66d9ef">long</span> ptr <span style="color:#f92672">=</span> mPtr<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>ptr <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">int</span> pendingIdleHandlerCount <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span><span style="color:#f92672">;</span> <span style="color:#75715e">// -1 only during first iteration
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">int</span> nextPollTimeoutMillis <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> <span style="color:#f92672">(;;)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>nextPollTimeoutMillis <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                Binder<span style="color:#f92672">.</span><span style="color:#a6e22e">flushPendingCommands</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">//nextPollTimeoutMillis为-1时（消息队列为空）该方法阻塞直到有新消息为止，
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">//或者等待指定的超时时间
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            nativePollOnce<span style="color:#f92672">(</span>ptr<span style="color:#f92672">,</span> nextPollTimeoutMillis<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">//如果阻塞操作结束，则去获取消息
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#66d9ef">synchronized</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">this</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// Try to retrieve the next message.  Return if found.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">final</span> <span style="color:#66d9ef">long</span> now <span style="color:#f92672">=</span> SystemClock<span style="color:#f92672">.</span><span style="color:#a6e22e">uptimeMillis</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>                Message prevMsg <span style="color:#f92672">=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                Message msg <span style="color:#f92672">=</span> mMessages<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 同步屏障，优先处理异步消息，此时同步消息不会被处理
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">//当消息的Handler为空时，则查询异步消息
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>msg <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span> <span style="color:#f92672">&amp;&amp;</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">target</span> <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// Stalled by a barrier.  Find the next asynchronous message in the queue.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">do</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                        prevMsg <span style="color:#f92672">=</span> msg<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                        msg <span style="color:#f92672">=</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#f92672">}</span> <span style="color:#66d9ef">while</span> <span style="color:#f92672">(</span>msg <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span> <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">!</span>msg<span style="color:#f92672">.</span><span style="color:#a6e22e">isAsynchronous</span><span style="color:#f92672">());</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>msg <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 消息未到触发时间，设置新的唤醒时间
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#75715e">//当异步消息触发时间大于当前时间，则设置下一次轮询的超时时长
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>now <span style="color:#f92672">&lt;</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">when</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#75715e">// Next message is not ready.  Set a timeout to wake up when it is ready.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                        nextPollTimeoutMillis <span style="color:#f92672">=</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">int</span><span style="color:#f92672">)</span> Math<span style="color:#f92672">.</span><span style="color:#a6e22e">min</span><span style="color:#f92672">(</span>msg<span style="color:#f92672">.</span><span style="color:#a6e22e">when</span> <span style="color:#f92672">-</span> now<span style="color:#f92672">,</span> Integer<span style="color:#f92672">.</span><span style="color:#a6e22e">MAX_VALUE</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#f92672">}</span> <span style="color:#66d9ef">else</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#75715e">// 获取到消息，同时重组新的队列，取走的消息从队列中移除
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                        <span style="color:#75715e">// Got a message.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                        mBlocked <span style="color:#f92672">=</span> <span style="color:#66d9ef">false</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>prevMsg <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                            prevMsg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span> <span style="color:#f92672">=</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#f92672">}</span> <span style="color:#66d9ef">else</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                            mMessages <span style="color:#f92672">=</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                        msg<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>DEBUG<span style="color:#f92672">)</span> Log<span style="color:#f92672">.</span><span style="color:#a6e22e">v</span><span style="color:#f92672">(</span>TAG<span style="color:#f92672">,</span> <span style="color:#e6db74">&#34;Returning message: &#34;</span> <span style="color:#f92672">+</span> msg<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>                        msg<span style="color:#f92672">.</span><span style="color:#a6e22e">markInUse</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#66d9ef">return</span> msg<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span> <span style="color:#66d9ef">else</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//没有消息
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#75715e">// No more messages.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    nextPollTimeoutMillis <span style="color:#f92672">=</span> <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// Process the quit message now that all pending messages have been handled.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>mQuitting<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    dispose<span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// If first time idle, then get the number of idlers to run.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// Idle handles only run if the queue is empty or if the first message
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// in the queue (possibly a barrier) is due to be handled in the future.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>pendingIdleHandlerCount <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>                        <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">(</span>mMessages <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span> <span style="color:#f92672">||</span> now <span style="color:#f92672">&lt;</span> mMessages<span style="color:#f92672">.</span><span style="color:#a6e22e">when</span><span style="color:#f92672">))</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//如果消息队列为空或者消息执行时间还未到，则获取IdleHandler队列的大小，下面需要用到
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    pendingIdleHandlerCount <span style="color:#f92672">=</span> mIdleHandlers<span style="color:#f92672">.</span><span style="color:#a6e22e">size</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>pendingIdleHandlerCount <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// No idle handlers to run.  Loop and wait some more.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    mBlocked <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">continue</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>mPendingIdleHandlers <span style="color:#f92672">==</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    mPendingIdleHandlers <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> IdleHandler<span style="color:#f92672">[</span>Math<span style="color:#f92672">.</span><span style="color:#a6e22e">max</span><span style="color:#f92672">(</span>pendingIdleHandlerCount<span style="color:#f92672">,</span> <span style="color:#ae81ff">4</span><span style="color:#f92672">)];</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">//将IdleHandler列表转为数组
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                mPendingIdleHandlers <span style="color:#f92672">=</span> mIdleHandlers<span style="color:#f92672">.</span><span style="color:#a6e22e">toArray</span><span style="color:#f92672">(</span>mPendingIdleHandlers<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// Run the idle handlers.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// We only ever reach this code block during the first iteration.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#66d9ef">for</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">int</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">;</span> i <span style="color:#f92672">&lt;</span> pendingIdleHandlerCount<span style="color:#f92672">;</span> i<span style="color:#f92672">++)</span> <span style="color:#f92672">{</span><span style="color:#75715e">//开始顺序执行所有IdleHandler
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">final</span> IdleHandler idler <span style="color:#f92672">=</span> mPendingIdleHandlers<span style="color:#f92672">[</span>i<span style="color:#f92672">];</span>
+</span></span><span style="display:flex;"><span>                mPendingIdleHandlers<span style="color:#f92672">[</span>i<span style="color:#f92672">]</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">;</span> <span style="color:#75715e">// release the reference to the handler
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">boolean</span> keep <span style="color:#f92672">=</span> <span style="color:#66d9ef">false</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">try</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    keep <span style="color:#f92672">=</span> idler<span style="color:#f92672">.</span><span style="color:#a6e22e">queueIdle</span><span style="color:#f92672">();</span><span style="color:#75715e">//具体执行
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#f92672">}</span> <span style="color:#66d9ef">catch</span> <span style="color:#f92672">(</span>Throwable t<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    Log<span style="color:#f92672">.</span><span style="color:#a6e22e">wtf</span><span style="color:#f92672">(</span>TAG<span style="color:#f92672">,</span> <span style="color:#e6db74">&#34;IdleHandler threw exception&#34;</span><span style="color:#f92672">,</span> t<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> <span style="color:#f92672">(!</span>keep<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//根据queueIdle()方法返回值决定是否移除该IdleHandler
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">synchronized</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">this</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                        mIdleHandlers<span style="color:#f92672">.</span><span style="color:#a6e22e">remove</span><span style="color:#f92672">(</span>idler<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// Reset the idle handler count to 0 so we do not run them again.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            pendingIdleHandlerCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// While calling an idle handler, a new message could have been delivered
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// so go back and look again for a pending message without waiting.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            nextPollTimeoutMillis <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c++" data-lang="c++"><span style="display:flex;"><span><span style="color:#75715e">//nativePollOnce最终执行到的函数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">int</span> Looper<span style="color:#f92672">::</span>pollInner(<span style="color:#66d9ef">int</span> timeoutMillis) {
+</span></span><span style="display:flex;"><span>       ...
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Poll.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">int</span> result <span style="color:#f92672">=</span> POLL_WAKE;
+</span></span><span style="display:flex;"><span>    mResponses.clear();
+</span></span><span style="display:flex;"><span>    mResponseIndex <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    mPolling <span style="color:#f92672">=</span> true;<span style="color:#75715e">//即将处于idle状态
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">epoll_event</span> eventItems[EPOLL_MAX_EVENTS];
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> eventCount <span style="color:#f92672">=</span> epoll_wait(mEpollFd.get(), eventItems, EPOLL_MAX_EVENTS, timeoutMillis);<span style="color:#75715e">//等待事件发生或者超时，在nativeWake()方法，向管道写端写入字符，则该方法会返回；
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ...
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> result;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><ul>
+<li>
+<p>针对同步消息：将<strong>时间小的消息放在靠近队头的位置，时间长的消息靠近队尾</strong>。 从队头开始，找到新消息在队列中合适的位置，然后将新消息插入到队列中，如果队列为null或新消息的等待时间小于队头消息的等待时间，则直接将新消息放入到队列的头部。如果队头消息的时间小于新消息，则新消息将从队头消息开始依次和队列中的消息进行比较，直到找到合适的位置。</p>
+</li>
+<li>
+<p>在next方法中，当发现队列中<strong>有同步屏障时，此时会优先返回队列中的异步消息</strong>，从队列中获取异步消息，并将该异步消息从队列中移除，如果同步屏障不被移除，即使异步消息被处理完毕，同步消息也不会被处理，队列会进入阻塞状态。 如果队列中没有同步屏障，则从队列中获取同步消息，并将该同步消息从队列中移除。</p>
+</li>
+<li>
+<p>同步屏障：从名称上来看，就是<strong>将同步消息屏蔽</strong>的意思，当队列中包含同步屏障消息时，整个消息队列会进入优先处理异步消息的状态，同时同步消息会被屏蔽。 在说同步屏障时，需要区分清楚MessageQueue队列中的消息类型，方便理解同步屏障，MessageQueue队列中可以分为三种消息，<strong>屏障消息，同步消息和异步消息</strong>。 屏障消息: target为null的Message对象，即没有消费者的消息，该消息仅用来标记当前队列优先处理异步消息。 同步消息: target不为null的Message对象，即可以被消费的消息，且该消息的isAsynchronous方法返回false。 异步消息: target不为null的Message对象，和同步消息的区别是isAsynchronous方法返回true。 异步消息需要用户手动的将Message标记为异步，通过方法setAsynchronous(true)将消息标记为异步。</p>
+<p>如何使用同步屏障：在MessageQueue类中有两个方法，用来添加和删除同步屏障，分别为postSyncBarrier()和removeSyncBarrier()。 通过Handler -&gt; Looper -&gt; MessageQueue,然后使用其方法即可，其实这两个方法的使用场景基本不可见，因为这两个方法被声明为hide方法，相当于系统自己留的后门，优先处理<strong>高优先级的任务</strong>，所以我们在调用时会出错，结合源码看，该方法只在Android的ViewRootImpl中被调用了，主要用来处理绘图操作（后续再去仔细分析ViewRootImpl的源码）。</p>
+<p>同步屏障原理：上面分析的插入消息我们知道，同步消息和异步消息的入队均是通过when的大小来确定消息在队列中的位置，在读取消息时，队列通过消息的msg.target==null来判断同步屏障。如果队列有同步屏障消息，则优先处理异步消息（即msg.isAsynchronous()返回true），直到异步屏障被清理，异步消息处理顺序一样是通过when大小来确定。如果不包含同步屏障，则处理同步消息，根据when大小来确定消息的处理顺序。 这里声明下：when大小是不会相同的，因为消息的入队是顺序的，所以根据入队时的时间计算出的when大小是不同的。</p>
+<p>所以并不是所有的msg，target值都必须不为空，**（handler的同步屏障就是一个target为空的msg，用来优先执行异步方法的）**同步屏障有一个很重要的使用场所就是接受垂直同步Vsync信号，用来刷新页面view的（因为为了保证view的流畅度，所以每次刷新信号到来的时候，要把其他的任务先放一放，优先刷新页面）。</p>
+</li>
+<li>
+<p>可以看到，计算出nextPollTimeoutMillis后就调用nativiePollOnce这个native方法。这里的话大概可以猜到他的运行机制，因为他是根据执行时间进行排序的，那传入的这个nextPollTimeoutMillis应该就是休眠时间，类似于java的sleep(time)。休眠到下一次message的时候就执行。那如果我在这段时间又插入了一个新的message怎么办，所以<strong>handler每次插入message都会唤醒线程，重新计算插入后，再走一次这个休眠流程</strong>。</p>
+</li>
+<li>
+<p>nativiePollOnce这个native方法可以通过名字知道，他用的是linux中的epoll机制。这个epoll和select一样都是linux的一个I/O多路复用机制，主要原理就不深入了，这里大概了解一下I/O多路复用机制和它与Select的区别就行。</p>
+<p><strong>Linux里的I/O多路复用机制</strong>：举个例子就是我们钓鱼的时候，为了保证可以最短的时间钓到最多的鱼，我们同一时间摆放多个鱼竿，同时钓鱼。然后哪个鱼竿有鱼儿咬钩了，我们就把哪个鱼竿上面的鱼钓起来。这里就是把这些全部message放到这个机制里面，那个time到了，就执行那个message。</p>
+<p><strong>epoll与select的区别</strong>：epoll获取事件的时候采用空间换时间的方式，类似与事件驱动，有哪个事件要执行，就通知epoll，所以获取的时间复杂度是O（1），select的话则是只知道有事件发生了，要通过O（n）的事件去轮询找到这个事件。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="looper的工作原理"><strong>Looper的工作原理</strong><a hidden class="anchor" aria-hidden="true" href="#looper的工作原理">#</a></h3>
+<p>消息循环：会不停地从MessageQueue中查看是否有新消息，如果有新消息就会立刻处理，否则会<strong>阻塞</strong>。</p>
+<ul>
+<li><strong>public static void prepare() 为当前线程创建Looper，保证Handler可以工作</strong>，给主线程ActivityThread创建Looper还可以使用prepareMainLooper方法，getMainLooper可以在任何地方获取到主线程的Looper。</li>
+<li><strong>private Looper(boolean quitAllowed) 构造方法中创建消息队列MessageQueue，并保存当前线程对象</strong>；</li>
+<li><strong>public static void loop() 调用了这个方法，消息系统才会真正起作用</strong>。loop是个<strong>死循环</strong>，只有当messageQueue.next()返回null才退出循环，也就是<strong>消息队列退出时</strong>。</li>
+<li>在子线程中，如果手动创建了Looper，最好是在任务完成不再需要的时候调用<strong>quit或者quitSafely方法终止消息循环</strong>，否则这个子线程会一直处于等待状态，而如果退出Looper以后，这个线程就会立即终止。quit或者quitSafely方法被调用的时候，Looper也会调用<strong>MessageQueue的quit或者quitSafely方法通知消息队列退出，next方法也会返回null</strong>。</li>
+<li>Looper处理一条消息，msg.target.dispatchMessage(msg)，也就是handler的dispatchMessage方法，Handler发送的消息最终又交给自己的方法来处理了，只是<strong>dispatchMessage方法是在创建Handler时使用的Looper中执行的，这样就将代码逻辑切换到指定的线程中执行了。</strong></li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-java" data-lang="java"><span style="display:flex;"><span><span style="color:#66d9ef">public</span> <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">prepare</span><span style="color:#f92672">()</span> <span style="color:#960050;background-color:#1e0010">为当前线程创建</span>Looper<span style="color:#960050;background-color:#1e0010">，保证</span>Handler<span style="color:#960050;background-color:#1e0010">可以工作；</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">private</span> <span style="color:#a6e22e">Looper</span><span style="color:#f92672">(</span><span style="color:#66d9ef">boolean</span> quitAllowed<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">构造方法中创建消息队列</span>MessageQueue<span style="color:#960050;background-color:#1e0010">，并保存当前线程对象；</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span> <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">loop</span><span style="color:#f92672">()</span> <span style="color:#960050;background-color:#1e0010">调用了这个方法，消息系统才会真正起作用。</span>loop<span style="color:#960050;background-color:#1e0010">是个死循环，只有当</span>messageQueue<span style="color:#f92672">.</span><span style="color:#a6e22e">next</span><span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">返回</span>null<span style="color:#960050;background-color:#1e0010">才退出循环，也就是消息队列退出时。</span>
+</span></span></code></pre></div><h3 id="handler的工作原理"><strong>Handler的工作原理</strong><a hidden class="anchor" aria-hidden="true" href="#handler的工作原理">#</a></h3>
+<p>Handler的<strong>一系列post方法</strong>（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的<strong>一系列send方法</strong>发送一个消息到Looper中去处理。</p>
+<p>handler发送消息的典型过程如下，可以看出这就是<strong>向消息队列中插入了一条消息</strong>，然后MessageQueue的next方法会返回这条消息给Looper处理，Looper处理消息会调用<strong>msg.target.dispatchMessage(msg)</strong>，最终交给Handler处理，也就是Handler的dispatchMessage方法会被调用，Handler就进入了处理消息的阶段。</p>
+<pre tabindex="0"><code>public final boolean sendMessage(Message msg)
+public final boolean sendMessageDelayed(Message msg, long delayMillis)
+public final boolean post(@NonNull Runnable r)
+public final boolean postDelayed(@NonNull Runnable r, long delayMillis)
+public boolean sendMessageAtTime(Message msg, long uptimeMillis) 
+private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMillis)
+</code></pre><pre tabindex="0"><code>public void dispatchMessage(Message msg)
+public void handleMessage(Message msg)//子类重写或者是用Callback内部的handleMessage方法
+</code></pre><p>另外关于构造方法，handler内部的消息队列就是赋值了Looper当中的消息队列。</p>
+<pre tabindex="0"><code>public Handler() 
+public Handler(Callback callback, boolean async) //在这个方法内会去判断当前线程有无Looper，如果没有的话就会抛出异常。
+</code></pre><h4 id="关于handler的内存泄露问题"><strong>关于Handler的内存泄露问题</strong><a hidden class="anchor" aria-hidden="true" href="#关于handler的内存泄露问题">#</a></h4>
+<ul>
+<li>
+<p>原因：</p>
+<p>首先Java中<strong>非静态内部类</strong> &amp;<strong>匿名内部类</strong>都默认持有外部类的引用 ，另外主线程中Looper的生命周期和应用的声明周期是一致的。那么也就是Handler 的生命周期和 Activity 是不一致的（<strong>Looper持有Message的引用，Message持有Handler的引用</strong>），所以经常会带来内存泄漏的问题。</p>
+<p>比如这样的情况：在 Activity 中定义了一个继承自<strong>Handler 的非静态内部类</strong>，并通过它发送了一条消息，该消息会在 10 分钟之后返回当前时间，接着将 Activity 退出，但是此时 Activity 并不会被 GC 回收掉的，因为我们的<strong>消息任务还在 MessageQueue 中排队</strong>，Message当中定义了Handler target，也就是<strong>含有Handler的引用</strong>，那么 Handler 是无法释放的，而 <strong>Handler本身又持有外部类 Activity 的引用</strong>，那么也就导致了 Activity 不能被回收释放了，造成内存泄漏。</p>
+</li>
+<li>
+<p>解决：<strong>静态内部类+弱引用</strong>，将非静态内部类设置成 static 类型的，同时为了高效率的回收，我们可以将所<strong>引用的外部类的实例在内部类中设置成 WeakReference 类型，也就是弱引用类型</strong>。此外为了防止 Looper对象的内存泄漏，我们可以在Activity销毁的时候调用removeCallbackAndMessages 方法，移出 MessageQueue 里面的所有消息。</p>
+<p>例如：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-java" data-lang="java"><span style="display:flex;"><span><span style="color:#66d9ef">private</span> Handler handler <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> Handler<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">public</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">handleMessage</span><span style="color:#f92672">(</span>Message msg<span style="color:#f92672">)</span> <span style="color:#f92672">{</span><span style="color:#75715e">//在主线程执行
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>msg<span style="color:#f92672">.</span><span style="color:#a6e22e">what</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">//4. 在handleMessage()中处理消息
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            String result <span style="color:#f92672">=</span> <span style="color:#f92672">(</span>String<span style="color:#f92672">)</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">obj</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            et_handler1_result<span style="color:#f92672">.</span><span style="color:#a6e22e">setText</span><span style="color:#f92672">(</span>result<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            pb_handler1_loading<span style="color:#f92672">.</span><span style="color:#a6e22e">setVisibility</span><span style="color:#f92672">(</span>View<span style="color:#f92672">.</span><span style="color:#a6e22e">INVISIBLE</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">};</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">//可以修改为：
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#75715e">//通过使用Static和弱引用WeakReference结合解决，
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    Handler handler<span style="color:#f92672">=</span><span style="color:#66d9ef">new</span> MyHandler<span style="color:#f92672">(</span><span style="color:#66d9ef">this</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">private</span> <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">class</span> <span style="color:#a6e22e">MyHandler</span> <span style="color:#66d9ef">extends</span> Handler <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">private</span> <span style="color:#66d9ef">final</span> WeakReference<span style="color:#f92672">&lt;</span>HandlerTestActivity<span style="color:#f92672">&gt;</span> activity<span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">private</span> <span style="color:#a6e22e">MyHandler</span><span style="color:#f92672">(</span>HandlerTestActivity activity<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">this</span><span style="color:#f92672">.</span><span style="color:#a6e22e">activity</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> WeakReference<span style="color:#f92672">&lt;&gt;(</span>activity<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">@Override</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">public</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">handleMessage</span><span style="color:#f92672">(</span>Message msg<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">super</span><span style="color:#f92672">.</span><span style="color:#a6e22e">handleMessage</span><span style="color:#f92672">(</span>msg<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            HandlerTestActivity mActivity <span style="color:#f92672">=</span> activity<span style="color:#f92672">.</span><span style="color:#a6e22e">get</span><span style="color:#f92672">();</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>mActivity <span style="color:#f92672">!=</span> <span style="color:#66d9ef">null</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                mActivity<span style="color:#f92672">.</span><span style="color:#a6e22e">doHandleMessage</span><span style="color:#f92672">(</span>msg<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">private</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">doHandleMessage</span><span style="color:#f92672">(</span>Message msg<span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>msg<span style="color:#f92672">.</span><span style="color:#a6e22e">what</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">//4. 在handleMessage()中处理消息
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            String result <span style="color:#f92672">=</span> <span style="color:#f92672">(</span>String<span style="color:#f92672">)</span> msg<span style="color:#f92672">.</span><span style="color:#a6e22e">obj</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            et_handler1_result<span style="color:#f92672">.</span><span style="color:#a6e22e">setText</span><span style="color:#f92672">(</span>result<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>            pb_handler1_loading<span style="color:#f92672">.</span><span style="color:#a6e22e">setVisibility</span><span style="color:#f92672">(</span>View<span style="color:#f92672">.</span><span style="color:#a6e22e">INVISIBLE</span><span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">}</span>
+</span></span></code></pre></div></li>
+<li>
+<p>其它内存泄露分析：<a href="https://mp.weixin.qq.com/s/8Emvbmbn1CgBPjddETEjMA">重新理解为什么Handler可能导致内存泄露</a></p>
+</li>
+</ul>
+<hr>
+<h4 id="主线程的消息循环"><strong>主线程的消息循环</strong><a hidden class="anchor" aria-hidden="true" href="#主线程的消息循环">#</a></h4>
+<p>Android的主线程就是ActivityThread，主线程的入口方法为main，在main方法中系统会通过Looper.prepareMainLooper()来创建主线程的Looper以及MessageQueue，并通过Looper.loop（）来开启主线程的消息循环。主线程消息循环开始以后，ActivityThread还需要一个Handler来和消息队列进行交互，这个Handler就是ActivityThread.H，它内部定义了一组消息类型，主要包含了<strong>四大组件的启动和停止等过程</strong>。ActivityThread通过ApplicationThread和AMS进行进程间通信，AMS以进程间通信的方式完成ActivityThread的请求后会回调ApplicationThread的Binder方法，然后ApplicationThread会向H发送消息，H收到消息后会将ApplicationThread中的逻辑切换到ActivityThread中去执行，即切换到主线程中执行，这个过程就是主线程消息循环模型。</p>
+<h4 id="messagequeue中没有消息时会anr吗">MessageQueue中没有消息时会ANR吗？<a hidden class="anchor" aria-hidden="true" href="#messagequeue中没有消息时会anr吗">#</a></h4>
+<p><a href="https://juejin.cn/post/6844903774096457736#comment">Handler后传篇一: 为什么Looper中的Loop()方法不能导致主线程卡死?</a>==目前仅参考==</p>
+<p>主线程的Looper为什么不会导致应用ANR？</p>
+<blockquote>
+<p>是否了解ANR产生条件？</p>
+<p>是否对Android App的进程运行机制有深入理解？</p>
+<p>是否对Looper的消息机制有深刻的理解？</p>
+<p>是否对IO多路复用有一定的认识？</p>
+</blockquote>
+<p>ANR是怎么产生的？</p>
+<p>ANR类型：</p>
+<ul>
+<li>
+<p>Service Timeout：</p>
+<ul>
+<li>前台服务20s</li>
+<li>后台服务200s</li>
+</ul>
+<p>与ActiveServices#scheduleServiceTimeoutLocked（ProcessRecord proc）有关</p>
+</li>
+<li>
+<p>BroadcastQueue Timeout:</p>
+<ul>
+<li>前台广播10s</li>
+<li>后台广播60s</li>
+</ul>
+</li>
+<li>
+<p>ContentProvider Timeout：10s</p>
+</li>
+<li>
+<p>InputDispatching Timeout：5s</p>
+</li>
+</ul>
+<p>​	ActivityThread主线程中也调起了Looper循环。</p>
+<p><strong>Looper的工作机制是什么？</strong></p>
+<p><strong>Looper不会导致应用ANR的本质原因是什么？</strong></p>
+<p>Looper和ANR的关系</p>
+<p>Looper是一个整体进程上的概念，而ANR是执行到某个环节对开发者占用主线程耗时的监控。按照这个关系来看，Looper无法产生ANR。</p>
+<p><strong>Looper为什么不会导致CPU占用率高？</strong></p>
+<ul>
+<li>
+<p>epoll_wait</p>
+<p>因此并没有占用CPU空转，而是阻塞（放弃CPU时间片）等待唤醒</p>
+</li>
+</ul>
+<h4 id="handler发送消息的delay靠谱吗">Handler发送消息的Delay靠谱吗？<a hidden class="anchor" aria-hidden="true" href="#handler发送消息的delay靠谱吗">#</a></h4>
+<blockquote>
+<p>是否清除UI时间相关的任务如动画的设计实现原理</p>
+<p>是否对Looper的消息机制深刻理解</p>
+<p>是否做过UI过度绘制或者其他消息机制的优化</p>
+</blockquote>
+<p><strong>不可靠</strong>，原因有如下：</p>
+<ol>
+<li>发送的消息越多Looper负载越高，任务越容易积压，进而导致卡顿</li>
+<li>消息队列有一些消息处理非常耗时，导致后面的消息延时处理</li>
+<li>大于Handler Looper的周期时基本可靠（例如主线程&gt;50ms）</li>
+<li>对于时间精确度要求较高，不要用handler的delay作为即时的依据</li>
+</ol>
+<p>如何优化可靠性？</p>
+<ol>
+<li>
+<p>精简消息：这几点主要确保处理的消息精简，避免资源浪费</p>
+<ul>
+<li>
+<p>队列优化，重复消息过滤</p>
+<p>removeCallbacksAndMessages等</p>
+</li>
+<li>
+<p>互斥消息取消</p>
+</li>
+<li>
+<p>复用消息</p>
+<p>减少对象创建，减少GC造成的卡顿</p>
+</li>
+</ul>
+</li>
+<li>
+<p>适当使用IdleHandler在空闲时处理任务</p>
+</li>
+<li>
+<p>使用独享Looper（HandlerThread）</p>
+</li>
+</ol>
+<h4 id="handler发送消息可能会丢失吗">Handler发送消息可能会丢失吗<a hidden class="anchor" aria-hidden="true" href="#handler发送消息可能会丢失吗">#</a></h4>
+<ul>
+<li>从MessageQueue#enqueueMessage源码可以看到，mQuitting == true时候不会继续插入消息，而会抛出异常。即MessageQueue调用quit退出时。</li>
+<li></li>
+</ul>
+<h4 id="handler其他用法">Handler其他用法<a hidden class="anchor" aria-hidden="true" href="#handler其他用法">#</a></h4>
+<ul>
+<li>
+<p>IdleHandler</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-java" data-lang="java"><span style="display:flex;"><span>MessageQueue<span style="color:#f92672">.</span><span style="color:#a6e22e">IdleHandler</span> idleHandler <span style="color:#f92672">=</span> <span style="color:#66d9ef">new</span> MessageQueue<span style="color:#f92672">.</span><span style="color:#a6e22e">IdleHandler</span><span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">@Override</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">public</span> <span style="color:#66d9ef">boolean</span> <span style="color:#a6e22e">queueIdle</span><span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">//处理任务
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">return</span> <span style="color:#66d9ef">true</span><span style="color:#f92672">;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">};</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#f92672">(</span>Build<span style="color:#f92672">.</span><span style="color:#a6e22e">VERSION</span><span style="color:#f92672">.</span><span style="color:#a6e22e">SDK_INT</span> <span style="color:#f92672">&gt;=</span> Build<span style="color:#f92672">.</span><span style="color:#a6e22e">VERSION_CODES</span><span style="color:#f92672">.</span><span style="color:#a6e22e">M</span><span style="color:#f92672">)</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>            Looper<span style="color:#f92672">.</span><span style="color:#a6e22e">getMainLooper</span><span style="color:#f92672">().</span><span style="color:#a6e22e">getQueue</span><span style="color:#f92672">().</span><span style="color:#a6e22e">addIdleHandler</span><span style="color:#f92672">(</span>idleHandler<span style="color:#f92672">);</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">}</span>
+</span></span></code></pre></div><p><a href="https://juejin.cn/post/7055564669540368392">IdleHandler原理以及延迟初始化方案实现</a></p>
+<ul>
+<li>梳理原理可得，IdleHandler执行的条件是消息队列空闲：（1）需要执行的消息还未到时间；（2）消息队列为空</li>
+</ul>
+</li>
+</ul>
+<h3 id="其他">其他<a hidden class="anchor" aria-hidden="true" href="#其他">#</a></h3>
+<h4 id="为什么非ui线程不能更新ui">为什么非UI线程不能更新UI？<a hidden class="anchor" aria-hidden="true" href="#为什么非ui线程不能更新ui">#</a></h4>
+<blockquote>
+<p>线程安全的概念</p>
+<p>UI线程的工作机制</p>
+<p>SurfaceView实现高帧率的原理</p>
+</blockquote>
+<p><strong>UI线程是什么？</strong></p>
+<p>Zygote —— App —— ActivityThread （主线程）</p>
+<p><strong>主线程如何工作？</strong></p>
+<p>Handler消息机制</p>
+<p><strong>如果把UI设计成线程安全的</strong></p>
+<p>UI为什么不设计成线程安全的</p>
+<ul>
+<li>UI具有可变性，甚至是高频可变性。变化快，在此基础上如果使用加锁同步策略性能又会很差。</li>
+<li>UI对响应时间的敏感性要求UI操作必须高效。</li>
+<li>UI组件必须批量绘制来保证效率。</li>
+</ul>
+<p><strong>非UI线程一定不能更新UI吗？</strong></p>
+<ul>
+<li>
+<p>通过Handler等方式</p>
+</li>
+<li>
+<p>SurfaceView（UI线程的其他存在形式）</p>
+<p>使用了非UI线程去刷新修改绘制UI内容，lockCanvas</p>
+<p>同时因为绘制的时间放到了非UI线程，也可以实现比较高的帧率。</p>
+</li>
+</ul>
+<p>自己实现一个简单的Handler-Looper框架？</p>
+<blockquote>
+<p>是否对Looper的消息机制有深刻的理解？</p>
+<p>是否对Java并发包中提供的队列有较为清除的认识？</p>
+<p>是否能够运用所学知识设计出一套类似的框架？</p>
+</blockquote>
+<p>Handler的核心能力</p>
+<ul>
+<li>线程间通信</li>
+<li>延迟任务执行</li>
+</ul>
+<p>Looper的核心能力</p>
+<ul>
+<li>循环，从MessageQueue中取消息分发</li>
+</ul>
+<p>MessageQueue的核心能力</p>
+<ul>
+<li>持有消息</li>
+<li>消息按照时间排序（优先级）</li>
+<li>队列为空时阻塞读取</li>
+<li>头节点有延时可以定时阻塞</li>
+</ul>
+<p>使用DelayQueue</p>
+<p><strong>文章</strong></p>
+<p><a href="https://juejin.im/post/5e9d853ee51d4546d4398620#heading-20">Android必知必会——消息机制</a></p>
+<p><a href="https://cloud.tencent.com/developer/article/1780768">https://cloud.tencent.com/developer/article/1780768</a></p>
+<p><a href="https://juejin.cn/post/6893791473121280013#comment">https://juejin.cn/post/6893791473121280013#comment</a></p>
+<p>临时问题：</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> Message.when 干啥</li>
+</ul>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+    </ul>
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+    <span>&copy; 2023 <a href="http://example.org/">甜树果子二号</a></span>
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)" class="top-link" id="top-link" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+        <path d="M12 6H0l6-6z" />
+    </svg>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    if (menu) {
+        menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+</body>
+
+</html>
