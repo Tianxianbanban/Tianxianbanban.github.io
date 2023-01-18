@@ -15,9 +15,13 @@
   </url><url>
     <loc>http://example.org/categories/</loc>
   </url><url>
+    <loc>http://example.org/tags/hugo/</loc>
+  </url><url>
     <loc>http://example.org/post/okhttp/</loc>
   </url><url>
     <loc>http://example.org/tags/</loc>
+  </url><url>
+    <loc>http://example.org/categories%5C_index/</loc>
   </url><url>
     <loc>http://example.org/post/%E7%BD%91%E7%BB%9C%E5%B1%82/</loc>
   </url><url>

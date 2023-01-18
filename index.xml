@@ -53,6 +53,15 @@ class Util{ public static void sendRequest(String url, Callback callback) { Requ
     </item>
     
     <item>
+      <title>分类</title>
+      <link>http://example.org/categories%5C_index/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://example.org/categories%5C_index/</guid>
+      <description></description>
+    </item>
+    
+    <item>
       <title>网络层</title>
       <link>http://example.org/post/%E7%BD%91%E7%BB%9C%E5%B1%82/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>

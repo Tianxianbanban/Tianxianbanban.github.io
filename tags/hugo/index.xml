@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>hugo on 甜树果子二号</title>
+    <link>http://example.org/tags/hugo/</link>
+    <description>Recent content in hugo on 甜树果子二号</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-cn</language><atom:link href="http://example.org/tags/hugo/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Android的消息机制</title>
+      <link>http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/</guid>
+      <description>概述 Handler是Android中消息机制的上层接口，所以开发过程中只需要和Handler交互即可。通过Handler就可以将一个任务切换到Handler所在线程中执行。其中的一个应用场景就是在子线程中执行耗时操作例如读取文件访问网络等以后可以通过handler将更新UI（UI非线程安全，android当中不允许在子线程中更新；而耗时操作如果在主线程进行会造成ANR）的操作切换回主线程中执行。
+Android中的消息机制主要是指Handler的运行机制。Handler创建时会采用当前线程的Looper来构建内部消息循环系统，然后可以通过Handler的一系列post方法（内部也是通过send方法完成的）将一个Runnable对象投递到Handler内部的Looper中去处理，或者通过Handler的一系列send方法发送一个消息到Looper中去处理，它会调用MessageQueue的enqueueMessage方法将这个消息放入消息队列待Looper处理。
+分析 ThreadLocal的作用 使用场景 定义：ThreadLocal是一个线程内部的数据存储类，通过它可以在指定的线程中存储数据，数据存储以后只能在指定的线程中获取到存储的数据，其他线程无法获取。
+使用场景：（1）当某些数据是以线程为作用域并且不同线程具有不同的数据副本时就可以采用ThreadLocal。（2）复杂逻辑下的对象传递，比如监听器的传递，有的时候一个线程中的任务过于复杂，可能表现为函数调用栈比较深以及代码入口的多样性，我们又需要监听器能够贯穿整个线程的执行过程，这个时候可以采用ThreadLocal。
+典型场景1：每个线程需要一个独享的对象（比如一些工具类，由于本身不是线程安全，如果多个线程共享同一个静态工具类的话有一定风险，就使用ThreadLocal给每个线程制造一个独享的对象，线程之间持有不同的实例就不会互相影响了，典型需要使用的类有SimpleDateFormat和Random）。让某个需要用到的对象在线程间隔离。 典型场景2：每个线程内需要保存全局变量（比如一些常用业务内容），以便让不同方法直接使用，避免繁琐的传参。这些信息在同一个线程内相同，但是不同的线程使用的业务内容是不相同的。使用ThreadLocal的话，无需使用synchronized关键字，可以在不影响性能的情况下，无需层层传递参数，就可以达到保存当前线程可以使用的信息的目的。在线程的生命周期内，通过静态ThreadLocal实例的get()方法取得自己set过的对象。在任何方法中都可以轻松获取到该对象。 好处： 达到线程安全 不需加锁，提高执行效率 更高效利用内存、节省开销：相比于每个任务都新建一个实例，使用ThreadLocal可以节省内存和开销.（比如100个任务提交给拥有10个线程的线程池，只要保证10个线程各自拥有一个处理任务的工具类实例就行，而不需要每个任务创建一个） 免去传参的繁琐：使代码耦合度更低、更优雅。 原理 工作过程：不同的线程访问同一个ThreadLocal的get方法，ThreadLocal内部会从各自的线程中取出一个ThreadLocalMap，然后再从ThreadLocalMap中以当前ThreadLocal作为key去查找对应的value值，不同线程中的ThreadLocalMap是不同的，所以可以通过ThreadLocal在不同线程中维护一套数据的副本而互不干扰。
+内部实现：
+ThreadLocal是一个泛型类public class ThreadLocal
+initialValue()
+该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread.</description>
+    </item>
+    
+    <item>
+      <title>OkHttp梳理</title>
+      <link>http://example.org/post/okhttp/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://example.org/post/okhttp/</guid>
+      <description>OkHttp梳理 OkHttp的使用 添加依赖
+基本代码
+class Util{ public static void sendRequest(String url, Callback callback) { RequestBody requestBody = new FormBody.Builder() .add(&amp;#34;key&amp;#34;,&amp;#34;content&amp;#34;) .build(); Request request = new Request.Builder() .url(url) .post(requestBody) .build(); OkHttpClient client = new OkHttpClient(); client.newCall(request).enqueue(callback);//异步请求的方式 //同步请求方式则是调用execute方法，并且有Response类型的返回值。 } } OkHttp请求的整体流程 OkHttp请求过程中最少只需要接触OkHttpClient、Request、Call、 Response，但是内部会进行大量的逻辑处理。所有网络请求的逻辑大部分集中在拦截器中，但是在进入拦截器之前还需要依靠分发器来调配请求任务。
+分发器：内部维护队列与线程池，完成请求调配。 拦截器：五大默认拦截器完成整个请求过程。 整个网络请求过程大致过程：
+通过建造者模式构建OKHttpClient与 Request。 OKHttpClient通过newCall发起一个新的请求。 通过分发器维护请求队列与线程池，完成请求调配。 通过五大默认拦截器完成请求重试，缓存处理，建立连接等一系列操作。 得到网络请求结果。 OKHttp分发器工作 分发器的主要作用是维护请求队列与线程池。（比如我们有100个异步请求，肯定不能把它们同时请求，而是应该把它们排队分个类，分为正在请求中的列表和正在等待的列表，请求完成后，可从等待中的列表中取出等待的请求，从而完成所有的请求。）
+同步请求 因为同步请求不需要线程池，也不存在任何限制。所以分发器仅做一下记录。后续按照加入队列的顺序同步请求即可。
+//Dispatcher.kt @Synchronized internal fun executed(call: RealCall) { runningSyncCalls.add(call) } 异步请求 Dispatcher将AsyncCall加到了readyAsyncCalls的队尾，并检测是否存在跟当前请求域名相同的请求，如果存在则复用，然后调用promoteAndExecute方法处理请求。
+//Dispatcher.kt internal fun enqueue(call: AsyncCall) { synchronized(this) { readyAsyncCalls.</description>
+    </item>
+    
+  </channel>
+</rss>
