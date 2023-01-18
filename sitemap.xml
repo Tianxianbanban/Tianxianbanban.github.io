@@ -2,29 +2,29 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>http://example.org/post/my-first-post/</loc>
+    <loc>https://tianxianbanban.github.io/post/my-first-post/</loc>
     <lastmod>2023-01-18T00:30:49+08:00</lastmod>
   </url><url>
-    <loc>http://example.org/post/</loc>
+    <loc>https://tianxianbanban.github.io/post/</loc>
     <lastmod>2023-01-18T00:30:49+08:00</lastmod>
   </url><url>
-    <loc>http://example.org/</loc>
+    <loc>https://tianxianbanban.github.io/</loc>
     <lastmod>2023-01-18T00:30:49+08:00</lastmod>
   </url><url>
-    <loc>http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/</loc>
+    <loc>https://tianxianbanban.github.io/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/</loc>
   </url><url>
-    <loc>http://example.org/categories/</loc>
+    <loc>https://tianxianbanban.github.io/categories/</loc>
   </url><url>
-    <loc>http://example.org/tags/hugo/</loc>
+    <loc>https://tianxianbanban.github.io/tags/hugo/</loc>
   </url><url>
-    <loc>http://example.org/post/okhttp/</loc>
+    <loc>https://tianxianbanban.github.io/post/okhttp/</loc>
   </url><url>
-    <loc>http://example.org/tags/</loc>
+    <loc>https://tianxianbanban.github.io/tags/</loc>
   </url><url>
-    <loc>http://example.org/categories%5C_index/</loc>
+    <loc>https://tianxianbanban.github.io/categories%5C_index/</loc>
   </url><url>
-    <loc>http://example.org/post/%E7%BD%91%E7%BB%9C%E5%B1%82/</loc>
+    <loc>https://tianxianbanban.github.io/post/%E7%BD%91%E7%BB%9C%E5%B1%82/</loc>
   </url><url>
-    <loc>http://example.org/post/%E8%BF%90%E8%BE%93%E5%B1%82/</loc>
+    <loc>https://tianxianbanban.github.io/post/%E8%BF%90%E8%BE%93%E5%B1%82/</loc>
   </url>
 </urlset>

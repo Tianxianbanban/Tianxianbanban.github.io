@@ -17,15 +17,15 @@ ThreadLocal是一个泛型类public class ThreadLocal
 initialValue()
 该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread.">
 <meta name="author" content="">
-<link rel="canonical" href="http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/">
+<link rel="canonical" href="https://tianxianbanban.github.io/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/">
 <link crossorigin="anonymous" href="/assets/css/stylesheet.bccfefac377bc340f06c260aed1bddf49a4354816d7c570d6aac75a997986c95.css" integrity="sha256-vM/vrDd7w0DwbCYK7Rvd9JpDVIFtfFcNaqx1qZeYbJU=" rel="preload stylesheet" as="style">
 <script defer crossorigin="anonymous" src="/assets/js/highlight.f413e19d0714851f6474e7ee9632408e58ac146fbdbe62747134bea2fa3415e0.js" integrity="sha256-9BPhnQcUhR9kdOfuljJAjlisFG&#43;9vmJ0cTS&#43;ovo0FeA="
     onload="hljs.initHighlightingOnLoad();"></script>
-<link rel="icon" href="http://example.org/favicon.ico">
-<link rel="icon" type="image/png" sizes="16x16" href="http://example.org/favicon-16x16.png">
-<link rel="icon" type="image/png" sizes="32x32" href="http://example.org/favicon-32x32.png">
-<link rel="apple-touch-icon" href="http://example.org/apple-touch-icon.png">
-<link rel="mask-icon" href="http://example.org/safari-pinned-tab.svg">
+<link rel="icon" href="https://tianxianbanban.github.io/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://tianxianbanban.github.io/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://tianxianbanban.github.io/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://tianxianbanban.github.io/apple-touch-icon.png">
+<link rel="mask-icon" href="https://tianxianbanban.github.io/safari-pinned-tab.svg">
 <meta name="theme-color" content="#2e2e33">
 <meta name="msapplication-TileColor" content="#2e2e33">
 <noscript>
@@ -75,7 +75,7 @@ ThreadLocal是一个泛型类public class ThreadLocal
 initialValue()
 该方法会返回当前线程对应的“初始值”，是一个延迟加载的方法，只有调用get的时候，才会触发。除非线程先前调用set方法(在这种情况下，不会为线程调用本initialValue方法)。 通常每个线程最多调用一次此方法，但如果已经调用了remove后，再调用get方法，则可以再次调用此方法。 如果不重写此方法，默认返回null。一般使用匿名内部类来重写initialValue方法，以便在后续使用中可以初始化副本对象。 public void set(T value) { Thread t = Thread.currentThread(); //取出当前线程的ThreadLocalMap //ThreadLocalMap不是Map，但是可以理解为Map ThreadLocalMap map = getMap(t); if (map != null) map.set(this, value);//key是ThreadLocal当前变量，value是我们需要的值 else createMap(t, value); } ThreadLocalMap getMap(Thread t) { return t.threadLocals; } //Thread内定义了成员threadLocals //设置到ThreadLocal中的数据也就是写入了threadLocals这个ThreadLocalMap ThreadLocal.ThreadLocalMap threadLocals = null; //threadLocals本身就保存了当前线程所有“局部变量”，也就是一个ThreadLocal变量的集合。 public T get() { Thread t = Thread." />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" /><meta property="article:section" content="post" />
+<meta property="og:url" content="https://tianxianbanban.github.io/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" /><meta property="article:section" content="post" />
 
 
 
@@ -101,13 +101,13 @@ initialValue()
       "@type": "ListItem",
       "position":  1 ,
       "name": "Posts",
-      "item": "http://example.org/post/"
+      "item": "https://tianxianbanban.github.io/post/"
     }, 
     {
       "@type": "ListItem",
       "position":  2 ,
       "name": "Android的消息机制",
-      "item": "http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/"
+      "item": "https://tianxianbanban.github.io/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/"
     }
   ]
 }
@@ -129,14 +129,14 @@ initialValue()
   "dateModified": "0001-01-01T00:00:00Z",
   "mainEntityOfPage": {
     "@type": "WebPage",
-    "@id": "http://example.org/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/"
+    "@id": "https://tianxianbanban.github.io/post/android%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/"
   },
   "publisher": {
     "@type": "Organization",
     "name": "甜树果子二号",
     "logo": {
       "@type": "ImageObject",
-      "url": "http://example.org/favicon.ico"
+      "url": "https://tianxianbanban.github.io/favicon.ico"
     }
   }
 }
@@ -158,7 +158,7 @@ initialValue()
 <header class="header">
     <nav class="nav">
         <div class="logo">
-            <a href="http://example.org/" accesskey="h" title="甜树果子二号 (Alt + H)">甜树果子二号</a>
+            <a href="https://tianxianbanban.github.io/" accesskey="h" title="甜树果子二号 (Alt + H)">甜树果子二号</a>
             <div class="logo-switches">
                 <button id="theme-toggle" accesskey="t" title="(Alt + T)">
                     <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
@@ -828,14 +828,14 @@ public Handler(Callback callback, boolean async) //在这个方法内会去判�
 
   <footer class="post-footer">
     <ul class="post-tags">
-      <li><a href="http://example.org/tags/hugo/">hugo</a></li>
+      <li><a href="https://tianxianbanban.github.io/tags/hugo/">hugo</a></li>
     </ul>
   </footer>
 </article>
     </main>
     
 <footer class="footer">
-    <span>&copy; 2023 <a href="http://example.org/">甜树果子二号</a></span>
+    <span>&copy; 2023 <a href="https://tianxianbanban.github.io/">甜树果子二号</a></span>
     <span>
         Powered by
         <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
